@@ -1,181 +1,227 @@
-// ===== Recipe Explorer =====
+// Recipe Explorer 
 
-// ---- 1. Grab the pieces of the page, using the ids in index.html ----
-const categorySelect = document.getElementById('category');
-const categoryTitle = document.getElementById('categoryTitle');
-const alertBox = document.getElementById('alert');
-const recipeContainer = document.getElementById('recipeContainer');
-const loadMoreButton = document.getElementById('loadMore');
-const modal = document.getElementById('recipeModal');
-const modalTitle = document.getElementById('recipeTitle');
-const modalContent = document.getElementById('modalContent');
-const closeButton = document.getElementById('close');
+const categoryTitle = document.getElementById("categoryTitle");
+const category = document.getElementById("category");
+const loadingState = document.getElementById("alert");
+const container = document.getElementById("recipeContainer");
+const loadMore = document.getElementById("loadMore");
+const modal = document.getElementById("recipeModal");
+const recipeTitle = document.getElementById("recipeTitle");
+const close = document.getElementById("close");
+const modalContent = document.getElementById("modalContent");
 
-// ---- 2. Memory ----
-let allMeals = []; 
-let shown = 6;     
-const pageSize = 6; 
+let recipes = [];            
+let displayedRecipes = 6;    
+const recipesPerLoad = 6;    
 
-// Protects the page: turns characters like < and > into harmless text,
-// in case a data source ever sends HTML instead of a name.
-function clean(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+document.addEventListener("DOMContentLoaded", function () {
+  fetchRecipes();
+});
 
-// ---- 3. Load a category (ASYNC) ----
-async function loadCategory(category) {
-  alertBox.textContent = 'Loading recipes...';
-  recipeContainer.innerHTML = '';
-  loadMoreButton.classList.add('hidden');
-  categoryTitle.textContent = category + ' Recipes';
+
+category.addEventListener("change", function () {
+  displayedRecipes = 6; 
+  fetchRecipes();
+});
+
+async function fetchRecipes() {
+  loadingState.textContent = "Loading recipes ...";
+  container.innerHTML = "";
+  loadMore.classList.add("hidden");
+
+  const selectedCategory = category.value;
+  
+  categoryTitle.textContent = selectedCategory + " Recipes";
 
   try {
-    const url = 'https://www.themealdb.com/api/json/v1/1/filter.php?c=' + category;
-    const response = await fetch(url);
+    const response = await fetch(
+      `https://www.themealdb.com/api/json/v1/1/filter.php?c=${selectedCategory}`
+    );
 
-    if (response.ok === false) {
-      alertBox.textContent = 'Could not load recipes. Try again.';
-      return;
+    if (!response.ok) {
+      throw new Error("Failed to fetch recipes");
     }
 
     const data = await response.json();
-    allMeals = data.meals;
-    shown = pageSize;
-    alertBox.textContent = '';
-    showMeals();
-  } catch (error) {
-    alertBox.textContent = 'Check your internet and try again.';
+    recipes = data.meals || [];
+    displayRecipes(recipes.slice(0, displayedRecipes));
+
+    
+    loadingState.textContent = "";
+
+    if (recipes.length > displayedRecipes) {
+      loadMore.classList.remove("hidden");
+    }
+  } catch (err) {
+    loadingState.textContent = err.message;
   }
 }
 
-// ---- 4. Draw the cards (SYNC) ----
-function showMeals() {
-  recipeContainer.innerHTML = '';
+function displayRecipes(recipesToDisplay) {
+  container.innerHTML = "";
 
-  let i = 0;
-  while (i < shown && i < allMeals.length) {
-    const meal = allMeals[i];
-
-    recipeContainer.innerHTML += `
-      <button data-id="${meal.idMeal}"
-        class="bg-white rounded-2xl shadow overflow-hidden text-left cursor-pointer hover:shadow-xl hover:-translate-y-1 transition focus-visible:outline-2 focus-visible:outline-[#023047]">
-        <img src="${meal.strMealThumb}" alt="${clean(meal.strMeal)}" class="w-full h-48 object-cover">
-        <div class="p-4">
-          <h3 class="font-bold">${clean(meal.strMeal)}</h3>
-          <p class="text-sm text-[#fb8500] mt-2">View recipe</p>
-        </div>
-      </button>`;
-
-    i = i + 1;
+  if (recipesToDisplay.length === 0) {
+    container.innerHTML = "No recipes found";
+    return;
   }
 
-  if (shown >= allMeals.length) {
-    loadMoreButton.classList.add('hidden');
-  } else {
-    loadMoreButton.classList.remove('hidden');
-  }
-}
+  recipesToDisplay.forEach(function (recipe) {
+    const recipeCard = document.createElement("section");
+    recipeCard.className =
+      "rounded-2xl border-slate-300 group bg-white shadow-sm transition duration-300 hover:shadow-xl hover:-translate-y-1";
 
-// ---- 5. Load More ----
-function loadMore() {
-  shown = shown + pageSize;
-  showMeals();
-}
+    const recipeImage = document.createElement("img");
+    recipeImage.src = recipe.strMealThumb;
+    recipeImage.alt = recipe.strMeal;
+    recipeImage.className =
+      "object-cover w-full h-48 transition duration-300 group-hover:scale-105";
 
-// ---- 6. Open a recipe in the pop-up (ASYNC: needs one more fetch) ----
-async function openRecipe(id) {
-  modalTitle.textContent = 'Loading...';
-  modalContent.innerHTML = '';
-  modal.classList.remove('hidden');
-  modal.classList.add('flex');
-  document.body.style.overflow = 'hidden'; // stop the page behind from scrolling
+    const wrapper = document.createElement("div");
+    wrapper.className = "overflow-hidden rounded-t-xl";
+    wrapper.appendChild(recipeImage);
 
-  try {
-    const response = await fetch('https://www.themealdb.com/api/json/v1/1/lookup.php?i=' + id);
-    if (response.ok === false) {
-      modalTitle.textContent = 'Could not load this recipe.';
-      return;
-    }
-    const data = await response.json();
-    showRecipe(data.meals[0]);
-  } catch (error) {
-    modalTitle.textContent = 'Check your internet and try again.';
-  }
-  
-function showRecipe(meal) {
-  modalTitle.textContent = meal.strMeal;
-  
-  let ingredients = '';
-  let n = 1;
-  while (n <= 20) {
-    const item = meal['strIngredient' + n];
-    const amount = meal['strMeasure' + n];
-    if (item && item.trim() !== '') {
-      ingredients += '<li>' + clean(amount) + ' ' + clean(item) + '</li>';
-    }
-    n = n + 1;
-  }
+    const cardTitle = document.createElement("h3");
+    cardTitle.textContent = recipe.strMeal;
+    cardTitle.className =
+      "mb-4 min-h-14 text-lg font-bold leading-tight text-slate-800";
 
-  let steps = '';
-  const lines = meal.strInstructions.split('\n');
-  lines.forEach(function (line) {
-    if (line.trim() !== '') {
-      steps += '<p>' + clean(line) + '</p>';
-    }
+    const viewRecipe = document.createElement("button");
+    viewRecipe.textContent = "View Recipe";
+    viewRecipe.type = "button";
+    viewRecipe.className =
+      "w-full rounded-xl bg-[#023047] py-3 text-sm text-white font-semibold transition hover:bg-[#023047]/90 cursor-pointer";
+    viewRecipe.addEventListener("click", function () {
+      fetchRecipeDetails(recipe.idMeal);
+    });
+
+    const cardContent = document.createElement("div");
+    cardContent.className = "p-5 rounded-xl";
+    cardContent.append(cardTitle, viewRecipe);
+
+    recipeCard.append(wrapper, cardContent);
+    container.appendChild(recipeCard);
   });
+}
 
-  let video = '';
-  if (meal.strYoutube) {
-    video = `<a href="${clean(meal.strYoutube)}" target="_blank" rel="noopener"
-      class="inline-block text-[#fb8500] font-semibold hover:underline">Watch on YouTube</a>`;
+
+loadMore.addEventListener("click", function () {
+  displayedRecipes += recipesPerLoad;
+  displayRecipes(recipes.slice(0, displayedRecipes));
+
+  if (displayedRecipes >= recipes.length) {
+    loadMore.classList.add("hidden");
   }
-
-  modalContent.innerHTML = `
-    <img src="${meal.strMealThumb}" alt="${clean(meal.strMeal)}" class="w-full max-h-72 object-cover rounded-xl">
-    <p class="text-sm text-slate-600">${clean(meal.strCategory)} &bull; ${clean(meal.strArea)}</p>
-    <h3 class="font-bold text-lg">Ingredients</h3>
-    <ul class="list-disc pl-6 space-y-1">${ingredients}</ul>
-    <h3 class="font-bold text-lg">Instructions</h3>
-    <div class="space-y-3 text-slate-700">${steps}</div>
-    ${video}`;
-}
-
-// ---- 7. Close the pop-up ----
-function closeRecipe() {
-  modal.classList.add('hidden');
-  modal.classList.remove('flex');
-  document.body.style.overflow = '';
-}
-
-// ---- 8. Connect everything to clicks and keys ----
-categorySelect.addEventListener('change', function () {
-  loadCategory(categorySelect.value);
 });
 
-loadMoreButton.addEventListener('click', loadMore);
+function openModal() {
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+  document.body.classList.add("overflow-hidden");
+}
+
+function closeModal() {
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+  document.body.classList.remove("overflow-hidden");
+}
+
+close.addEventListener("click", closeModal);
+
+
+modal.addEventListener("click", function (e) {
+  if (e.target === modal) {
+    closeModal();
+  }
+});
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape" && !modal.classList.contains("hidden")) {
+    closeModal();
+  }
+});
+
+async function fetchRecipeDetails(recipeId) {
+  openModal();
+  recipeTitle.textContent = "Loading...";
+  modalContent.innerHTML =
+    '<p class="text-sm text-slate-500 text-center p-4 m-4">Loading recipe details...</p>';
+
+  try {
+    const response = await fetch(
+      `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${recipeId}`
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to load recipe details");
+    }
+
+    const data = await response.json();
+    if (!data.meals || data.meals.length === 0) {
+      throw new Error("Recipe not found");
+    }
+
+    displayRecipeDetails(data.meals[0]);
+  } catch (err) {
+    modalContent.textContent =
+      "Unable to load this recipe. Please try again later.";
+  }
+}
+
+function displayRecipeDetails(recipe) {
+  modalContent.innerHTML = "";
+  recipeTitle.textContent = recipe.strMeal;
+
+  const image = document.createElement("img");
+  image.src = recipe.strMealThumb;
+  image.alt = recipe.strMeal;
+  image.className = "w-full max-h-72 rounded-2xl object-cover";
+
+  const mealCategory = document.createElement("p");
+  mealCategory.className = "text-sm text-slate-500";
+  mealCategory.textContent = `Category: ${recipe.strCategory}`;
+
+  const cuisine = document.createElement("p");
+  cuisine.className = "text-sm text-slate-500";
+  cuisine.textContent = `Cuisine: ${recipe.strArea}`;
+
+  const mealDesc = document.createElement("div");
+  mealDesc.className = "flex gap-6";
+  mealDesc.append(mealCategory, cuisine);
+
+  const ingredientsHeading = document.createElement("h2");
+  ingredientsHeading.className = "font-bold text-2xl text-slate-800 my-3";
+  ingredientsHeading.textContent = "Ingredients";
+
+  const ingredientsList = document.createElement("ul");
+  ingredientsList.className = "grid grid-cols-2 gap-6";
+
   
-recipeContainer.addEventListener('click', function (event) {
-  const card = event.target.closest('[data-id]');
-  if (card) {
-    openRecipe(card.dataset.id);
+  for (let i = 1; i <= 20; i++) {
+    const ingredient = recipe[`strIngredient${i}`];
+    const measure = recipe[`strMeasure${i}`];
+
+    if (ingredient && ingredient.trim() !== "") {
+      const listItem = document.createElement("li");
+      listItem.textContent = `${measure} ${ingredient}`;
+      listItem.className = "text-sm text-slate-500";
+      ingredientsList.appendChild(listItem);
+    }
   }
-});
 
-closeButton.addEventListener('click', closeRecipe);
+  const instructionsHeading = document.createElement("h2");
+  instructionsHeading.className = "font-bold text-2xl text-slate-800 my-3";
+  instructionsHeading.textContent = "Cooking Instructions";
 
-modal.addEventListener('click', function (event) {
-  if (event.target === modal) {
-    closeRecipe();
-  }
-});
+  const instructions = document.createElement("p");
+  instructions.className = "text-slate-500 whitespace-pre-line leading-7";
+  instructions.textContent = recipe.strInstructions;
 
-document.addEventListener('keydown', function (event) {
-  if (event.key === 'Escape') {
-    closeRecipe();
-  }
-});
-
-// ---- 9. Start: load the first category ----
-loadCategory(categorySelect.value);
+  modalContent.append(
+    image,
+    mealDesc,
+    ingredientsHeading,
+    ingredientsList,
+    instructionsHeading,
+    instructions
+  );
+}
